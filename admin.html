@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CommuSyncro - Panneau Admin</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #1a1a1a;
+            color: #ffffff;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+            border-bottom: 2px solid #ff0000;
+            padding-bottom: 20px;
+        }
+        .header h1 {
+            color: #ff0000;
+        }
+        .admin-section {
+            background-color: #2a2a2a;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-left: 5px solid #ff0000;
+        }
+        .status-display {
+            display: flex;
+            align-items: center;
+            margin-bottom: 15px;
+            background-color: #333;
+            padding: 15px;
+            border-radius: 5px;
+        }
+        .status-icon {
+            font-size: 24px;
+            margin-right: 10px;
+        }
+        .status-info {
+            flex-grow: 1;
+        }
+        .status-title {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        .status-message {
+            color: #cccccc;
+        }
+        .status-time {
+            color: #888888;
+            font-size: 12px;
+        }
+        input[type="text"], 
+        input[type="password"],
+        select, 
+        textarea {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            border: none;
+            border-radius: 5px;
+            background-color: #3a3a3a;
+            color: #ffffff;
+        }
+        textarea {
+            min-height: 100px;
+            resize: vertical;
+        }
+        button {
+            background-color: #ff0000;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            width: 100%;
+            margin-top: 10px;
+            font-weight: bold;
+        }
+        button:hover {
+            background-color: #cc0000;
+        }
+        .footer {
+            text-align: center;
+            margin-top: 40px;
+            padding: 20px;
+            color: #888888;
+            font-size: 14px;
+        }
+        .alert {
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+            display: none;
+        }
+        .alert-success {
+            background-color: #1b5e20;
+            color: #ffffff;
+        }
+        .alert-error {
+            background-color: #b71c1c;
+            color: #ffffff;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>☭ CommuSyncro - Panneau Admin ☭</h1>
+            <p>Gestion du Bot et des Mises à Jour</p>
+        </div>
+
+        <div id="alerts"></div>
+
+        <div class="admin-section">
+            <h2>Statut Actuel</h2>
+            <div class="status-display">
+                <span class="status-icon" id="statusEmoji">⚪</span>
+                <div class="status-info">
+                    <div class="status-title" id="statusTitle">Chargement...</div>
+                    <div class="status-message" id="statusMessage">Chargement des informations...</div>
+                    <div class="status-time" id="statusTime"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="admin-section">
+            <h2>Mettre à Jour le Statut</h2>
+            <select id="statusSelect">
+                <option value="operational">🟢 Opérationnel</option>
+                <option value="maintenance">🟡 Maintenance</option>
+                <option value="incident">🔴 Incident</option>
+            </select>
+            <textarea id="messageInput" placeholder="Message détaillé sur le statut actuel..."></textarea>
+            <button onclick="updateStatus()">Mettre à jour le statut</button>
+        </div>
+
+        <div class="admin-section">
+            <h2>Envoyer une Mise à Jour</h2>
+            <input type="text" id="updateTitle" placeholder="Titre de la mise à jour">
+            <textarea id="updateMessage" placeholder="Message détaillé de la mise à jour..."></textarea>
+            <button onclick="sendUpdate()">Envoyer aux serveurs</button>
+        </div>
+
+        <div class="footer">
+            <p>⚠️ Panneau d'administration privé - Accès restreint</p>
+            <p>CommuSyncro v1.0.0 | ☭</p>
+        </div>
+    </div>
+
+    <script>
+        let adminToken = localStorage.getItem('adminToken');
+
+        async function checkAuth() {
+            if (!adminToken) {
+                adminToken = prompt('Entrez votre token admin:');
+                if (!adminToken) {
+                    window.location.href = '/';
+                    return false;
+                }
+                localStorage.setItem('adminToken', adminToken);
+            }
+            return true;
+        }
+
+        async function makeAuthRequest(url, method, body) {
+            if (!await checkAuth()) return null;
+            
+            try {
+                const response = await fetch(url, {
+                    method,
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': adminToken
+                    },
+                    body: body ? JSON.stringify(body) : undefined
+                });
+                
+                if (response.status === 401) {
+                    localStorage.removeItem('adminToken');
+                    adminToken = null;
+                    showAlert('Token invalide. Veuillez vous reconnecter.', 'error');
+                    return null;
+                }
+                
+                return response;
+            } catch (error) {
+                console.error('Erreur:', error);
+                showAlert('Erreur de connexion au serveur', 'error');
+                return null;
+            }
+        }
+
+        async function updateStatus() {
+            const status = document.getElementById('statusSelect').value;
+            const message = document.getElementById('messageInput').value;
+            
+            const response = await makeAuthRequest('/api/status', 'POST', { status, message });
+            if (!response) return;
+            
+            if (response.ok) {
+                showAlert('Statut mis à jour avec succès !', 'success');
+                loadStatus();
+                document.getElementById('messageInput').value = '';
+            } else {
+                showAlert('Erreur lors de la mise à jour du statut', 'error');
+            }
+        }
+
+        async function sendUpdate() {
+            const title = document.getElementById('updateTitle').value;
+            const message = document.getElementById('updateMessage').value;
+            
+            if (!title || !message) {
+                showAlert('Veuillez remplir tous les champs', 'error');
+                return;
+            }
+            
+            const response = await makeAuthRequest('/api/update', 'POST', { title, message });
+            if (!response) return;
+            
+            if (response.ok) {
+                showAlert('Mise à jour envoyée avec succès !', 'success');
+                document.getElementById('updateTitle').value = '';
+                document.getElementById('updateMessage').value = '';
+            } else {
+                showAlert('Erreur lors de l\'envoi de la mise à jour', 'error');
+            }
+        }
+
+        async function loadStatus() {
+            try {
+                const response = await makeAuthRequest('/api/status', 'GET');
+                if (!response) return;
+                
+                const data = await response.json();
+                
+                const statusEmojis = {
+                    operational: '🟢',
+                    maintenance: '🟡',
+                    incident: '🔴'
+                };
+                
+                document.getElementById('statusEmoji').textContent = statusEmojis[data.status] || '⚪';
+                document.getElementById('statusTitle').textContent = data.status.toUpperCase();
+                document.getElementById('statusMessage').textContent = data.message;
+                document.getElementById('statusTime').textContent = new Date(data.timestamp).toLocaleString();
+            } catch (error) {
+                console.error('Erreur:', error);
+                showAlert('Erreur lors du chargement du statut', 'error');
+            }
+        }
+
+        function showAlert(message, type) {
+            const alertsDiv = document.getElementById('alerts');
+            const alert = document.createElement('div');
+            alert.className = `alert alert-${type}`;
+            alert.textContent = message;
+            alert.style.display = 'block';
+            alertsDiv.appendChild(alert);
+            setTimeout(() => alert.remove(), 5000);
+        }
+
+        // Charger le statut au chargement
+        loadStatus();
+        // Rafraîchir toutes les 30 secondes
+        setInterval(loadStatus, 30000);
+        
+        // Vérifier l'authentification au chargement
+        checkAuth();
+    </script>
+</body>
+</html>
